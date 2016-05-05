@@ -1,0 +1,217 @@
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui" />
+
+<!--[if lte IE 8]>
+	<link rel="stylesheet" href="../dist/leaflet.ie.css" />
+<![endif]-->
+
+<link href='https://api.mapbox.com/mapbox.js/v2.3.0/mapbox.css' rel='stylesheet' />    
+<link href='https://api.mapbox.com/mapbox.js/plugins/leaflet-draw/v0.2.3/leaflet.draw.css' rel='stylesheet' />
+
+<script src='https://api.mapbox.com/mapbox.js/v2.3.0/mapbox.js'></script>
+<script src='https://api.mapbox.com/mapbox.js/plugins/leaflet-draw/v0.2.3/leaflet.draw.js'></script>
+<script src='https://api.mapbox.com/mapbox.js/plugins/leaflet-geodesy/v0.1.0/leaflet-geodesy.js'></script>
+
+<script src="js/geojson.js"></script>
+<script src="js/jquery-1.9.1.min.js"></script>
+<script src="js/jquery-ui-1.10.0.min.js"></script>
+<script src="js/bootstrap.min.js"></script>
+
+<style type="text/css">
+body, #map {
+  height: 70%;
+  position:absolute; top:100; bottom:10; left:10; width:70%;
+}
+#ddd {
+  height: 20px;
+  width: 60px;
+  position:absolute; top:1200px;left:10px; 
+  z-index: 100;
+}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<script>
+  var map = L.map('map');
+  var server = 'http://localhost:8777/'
+
+  map.setView([52.09, 30.82], 7, L.CRS.EPSG26915);
+
+  new L.tileLayer("http://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png").addTo(map);
+  // new L.tileLayer(server + "gt/tms/{z}/{x}/{y}", {layers: 'default', maxZoom: 13}).addTo(map);
+  //var layer = new L.tileLayer(server + "gt/tms/{z}/{x}/{y}", {layers: 'default', format:'image/png', maxZoom:13}).addTo(map)
+//   layer.setOpacity(0.3)
+
+// var sayHi = (function() {
+//   function sayHi(){
+//   	alert("Hi")
+//   }
+//   name = "Roman"
+//   return{
+//   	sayingHi: sayHi,
+//   	getName: function() { sayHi(); }
+//   };
+
+// })();
+
+// function sayHello() {
+// 	alert("hey");
+// }
+
+// sayHi.getName();
+
+
+// function myFunction() {
+//     return Math.PI;
+// }
+
+// function sayHello(){
+//   	alert("Hello")
+//   }
+// sayHello();
+
+var drawing = (function() {
+    var drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+
+    var drawOptions = {
+        draw: {
+	    position: 'topleft',
+            marker: false,
+            polyline: false,
+            rectangle: false,
+            circle: false,
+	    polygon: {
+	        title: 'Draw a polygon for summary information.',
+	        allowIntersection: false,
+	        drawError: {
+		    color: '#b00b00',
+		    timeout: 1000
+	        },
+	        shapeOptions: {
+		    color: '#338FF2'
+	        }
+	    },
+        },
+        edit: false
+    };
+
+    var drawControl = new L.Control.Draw(drawOptions);
+    map.addControl(drawControl);
+
+    map.on('draw:created', function (e) {
+        if (e.layerType === 'polygon') {
+            summary.setPolygon(e.layer);
+        }
+    });
+
+    map.on('draw:edited', function(e) {
+        var polygon = summary.getPolygon();
+        if(polygon != null) { 
+            summary.update();
+            weightedOverlay.update();
+        }
+    });
+
+    map.on('draw:drawstart', function(e) {
+        var polygon = summary.getPolygon();
+        if(polygon != null) { drawnItems.removeLayer(polygon); }
+    });
+
+    map.on('draw:drawstop', function(e) {
+        drawnItems.addLayer(summary.getPolygon());
+    });
+
+    return {
+        clear: function(polygon) {
+            drawnItems.removeLayer(polygon);
+        }
+    }
+})();
+
+var summary = (function() {
+    var polygon = null;
+    var update = function(switchTab) {
+        if(polygon != null) {
+            var geoJson = GJ.fromPolygon(polygon);
+            alert(geoJson)
+            $.ajax({        
+                url: server + 'gt/sum',
+                data: { polygon : geoJson},
+                dataType: "json",
+                success : function(jsondata) {
+                    var sdata = $("#summary_data");
+                    sdata.empty();
+                    sdata.append(jsondata.total);
+                    sdata.append($('<tr class="warning"><td></td><td class="bold">Score:</td>' + 
+                                   '<td class="bold" style="text-align:right;">' + jsondata.total + 
+                                 '</td></tr>'));
+                }
+            });
+        }
+    };
+    return {
+        getPolygon: function() { return polygon; },
+        setPolygon: function(p) { 
+            polygon = p; 
+            weightedOverlay.update();
+            update(true);
+        },
+        update: update,
+        clear: function() {
+            if(polygon) {
+                drawing.clear(polygon);
+                polygon = null;
+                weightedOverlay.update();
+            }
+        }
+    };
+})();
+
+var weightedOverlay = (function() {
+    update = function() {
+        var geoJson = "";
+        var polygon = summary.getPolygon();
+        if(polygon != null) {
+            geoJson = GJ.fromPolygon(polygon);
+            summary.update();
+        }
+
+        WOLayer = new L.tileLayer(server + "gt/tms/{z}/{x}/{y}", {
+            layers: 'default',
+            format: 'image/png',
+            mask: encodeURIComponent(geoJson),
+            maxZoom:13
+        });
+    
+        WOLayer.setOpacity(1);
+        WOLayer.addTo(map);
+    };
+
+    return {
+        update: update,
+        getMapLayer: function() { return WOLayer; }
+    };
+})();
+
+$(document).ready(function(){
+    weightedOverlay.update();
+
+    $('#clear').click( function() {
+        summary.clear();
+        return false;
+    });
+});
+
+</script>
+
+<a id="clear" class="sign_new" href="">Clear</a>
+
+<div id="summary_data">Hdasdsa;ldasldkl;kda</div>
+
+</body>
+</html>
