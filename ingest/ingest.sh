@@ -49,13 +49,13 @@ do
   INPUT=file:$(realpath $LAYERS/$LAYER)
 
   echo "spark-submit \
-  --class geotrellis.testim.TestimIngest --driver-memory=2G $JAR \
+  --class geotrellis.ingestion.TestimIngest --driver-memory=2G $JAR \
   --input hadoop --format geotiff --cache NONE -I path=$INPUT \
   --output accumulo -O instance=$INSTANCE table=$TABLE user=$USER password=$PASSWORD zookeeper=$ZOOKEEPER \
   --layer $LAYERNAME --pyramid --crs $CRS --layoutScheme $LAYOUT_SCHEME" >> test.txt
 
   /home/rshir/Installs/spark-1.6.0/bin/spark-submit \
-  --class geotrellis.testim.TestIngest --driver-memory=3G $JAR \
+  --class geotrellis.ingestion.TestIngest --driver-memory=3G $JAR \
   --input hadoop --format geotiff --cache NONE -I path=$INPUT \
   --output hadoop -O path=$OUTPUT \
   --layer $LAYERNAME --crs $CRS --pyramid --layoutScheme $LAYOUT_SCHEME
